@@ -39,3 +39,26 @@ multiboot2_header_start:
 .short MULTIBOOT2_TAG_TYPE_UNUSED
 .long MULTIBOOT2_LAST_TAG_SIZE
 multiboot2_header_end:
+
+.set ALIGN_STACK, 16
+.set STACK_SIZE, 16384
+
+# Initialisation de la stack
+.section .bss
+.align ALIGN_STACK
+stack_bottom:
+.skip STACK_SIZE
+stack_top:
+
+.section .text
+.global _start
+_start:
+	mov $stack_top, %esp
+	push %ebx
+	push %eax
+	call kernel_main
+
+hang:
+	cli
+	hlt
+	jmp hang
