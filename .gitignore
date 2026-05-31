@@ -53,3 +53,6 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# KFS build artefacts
+target/
