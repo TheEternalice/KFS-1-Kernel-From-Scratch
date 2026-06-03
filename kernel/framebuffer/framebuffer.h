@@ -11,7 +11,7 @@ multiboot_uint32_t
 
 /*  Write color pixel at coordonate   */
 void
-	framebuffer_put_pixel(struct multiboot_tag_framebuffer *tagfb,
+	framebuffer_put_pixel(	struct multiboot_tag_framebuffer *tagfb,
 							unsigned x, unsigned y,
 							multiboot_uint32_t color);
 
