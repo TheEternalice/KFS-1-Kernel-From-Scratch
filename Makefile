@@ -1,4 +1,5 @@
-C_SRCS			=	kernel/kernel.c
+C_SRCS			=	kernel/kernel.c kernel/framebuffer/framebuffer.c\
+					kernel/graphic/graphic.c kernel/libc/libc.c
 C_OBJS			=	$(C_SRCS:%.c=$(OBJ_DIR)/%.o)
 
 ASM_SRCS		=	boot/boot.s
