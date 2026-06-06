@@ -83,14 +83,13 @@ void kernel_main(uint32_t magic, uint32_t multiboot_info_addr)
 			{
 				struct multiboot_tag_framebuffer *tagfb
 				= (struct multiboot_tag_framebuffer *) tag;
-				multiboot_uint32_t color = framebuffer_get_color(tagfb);
-				unsigned i;
-				
-				for (i = 0;
-					i < tagfb->common.framebuffer_width
-					&& i < tagfb->common.framebuffer_height;
-					i++)
-				framebuffer_put_pixel(tagfb, i, i, color);
+				uint32_t color = convert_color_for_framebuffer(tagfb, GRAPHIC_COLOR_RED);
+	
+				unsigned x;
+				unsigned y;
+				for (y = 0; y < tagfb->common.framebuffer_height; y++)
+					for (x = 0; x < tagfb->common.framebuffer_width; x++)
+						framebuffer_put_pixel(tagfb, x, y, color);
 				break;
 			}
 		}

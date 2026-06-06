@@ -1,51 +1,55 @@
 #include "framebuffer.h"
 
-multiboot_uint32_t
-	framebuffer_get_color(struct multiboot_tag_framebuffer *tagfb)
+uint32_t
+	convert_color_for_framebuffer(struct multiboot_tag_framebuffer *tagfb,
+							uint32_t rgb)
 {
+	uint8_t red = (rgb >> 16) & 0xff;
+	uint8_t green = (rgb >> 8) & 0xff;
+	uint8_t blue = rgb & 0xff;
+
 	switch (tagfb->common.framebuffer_type)
 	{
-		case MULTIBOOT_FRAMEBUFFER_TYPE_INDEXED:
+		case MULTIBOOT_FRAMEBUFFER_TYPE_RGB:
 		{
-			unsigned best_distance, distance;
-			struct multiboot_color *palette;
-			multiboot_uint32_t color;
-			unsigned i;
+			uint32_t red_mask;
+			uint32_t green_mask;
+			uint32_t blue_mask;
+			uint32_t red_value;
+			uint32_t green_value;
+			uint32_t blue_value;
+			uint32_t red_pixel;
+			uint32_t green_pixel;
+			uint32_t blue_pixel;
 
-			palette = tagfb->framebuffer_palette;
-			color = 0;
-			best_distance = 4 * 256 * 256;
+			red_mask = (1 << tagfb->framebuffer_red_mask_size) - 1;
+			green_mask = (1 << tagfb->framebuffer_green_mask_size) - 1;
+			blue_mask = (1 << tagfb->framebuffer_blue_mask_size) - 1;
 
-			for (i = 0; i < tagfb->framebuffer_palette_num_colors; i++)
-			{
-				distance = (0xff - palette[i].blue)  * (0xff - palette[i].blue)
-						+ palette[i].red   * palette[i].red
-						+ palette[i].green * palette[i].green;
-				if (distance < best_distance)
-				{
-					color = i;
-					best_distance = distance;
-				}
-			}
-			return color;
+			red_value = (red >> (8 - tagfb->framebuffer_red_mask_size))
+						& red_mask;
+			green_value = (green >> (8 - tagfb->framebuffer_green_mask_size))
+						& green_mask;
+			blue_value = (blue >> (8 - tagfb->framebuffer_blue_mask_size))
+						& blue_mask;
+
+			red_pixel = red_value << tagfb->framebuffer_red_field_position;
+			green_pixel = green_value << tagfb->framebuffer_green_field_position;
+			blue_pixel = blue_value << tagfb->framebuffer_blue_field_position;
+
+			return red_pixel | green_pixel | blue_pixel;
 		}
 
-		case MULTIBOOT_FRAMEBUFFER_TYPE_RGB:
-			return ((1 << tagfb->framebuffer_blue_mask_size) - 1)
-					<< tagfb->framebuffer_blue_field_position;
-
-		case MULTIBOOT_FRAMEBUFFER_TYPE_EGA_TEXT:
-			return '\\' | 0x0100;
-
 		default:
-			return 0xffffffff;
+			printk("Unsupported framebuffer type: %u\n", tagfb->common.framebuffer_type);
+			return 0;
 	}
 }
 
 void
 	framebuffer_put_pixel(struct multiboot_tag_framebuffer *tagfb,
 							unsigned x, unsigned y,
-							multiboot_uint32_t color)
+							uint32_t color)
 {
 	void *fb = (void *) (uint32_t) tagfb->common.framebuffer_addr;
 	unsigned pitch = tagfb->common.framebuffer_pitch;
@@ -54,27 +58,27 @@ void
 	{
 		case 8:
 		{
-			multiboot_uint8_t *pixel = fb + pitch * y + x;
-			*pixel = (multiboot_uint8_t) color;
+			uint8_t *pixel = fb + pitch * y + x;
+			*pixel = (uint8_t) color;
 			break;
 		}
 		case 15:
 		case 16:
 		{
-			multiboot_uint16_t *pixel = fb + pitch * y + 2 * x;
-			*pixel = (multiboot_uint16_t) color;
+			uint16_t *pixel = fb + pitch * y + 2 * x;
+			*pixel = (uint16_t) color;
 			break;
 		}
 		case 24:
 		{
-			multiboot_uint32_t *pixel = fb + pitch * y + 3 * x;
-			*pixel = (multiboot_uint32_t) color;
+			uint32_t *pixel = fb + pitch * y + 3 * x;
+			*pixel = color;
 			break;
 		}
 		case 32:
 		{
-			multiboot_uint32_t *pixel = fb + pitch * y + 4 * x;
-			*pixel = (multiboot_uint32_t) color;
+			uint32_t *pixel = fb + pitch * y + 4 * x;
+			*pixel = color;
 			break;
 		}
 	}
