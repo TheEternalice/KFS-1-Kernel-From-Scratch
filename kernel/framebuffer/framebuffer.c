@@ -53,33 +53,6 @@ void
 {
 	void *fb = (void *) (uint32_t) tagfb->common.framebuffer_addr;
 	unsigned pitch = tagfb->common.framebuffer_pitch;
-
-	switch (tagfb->common.framebuffer_bpp)
-	{
-		case 8:
-		{
-			uint8_t *pixel = fb + pitch * y + x;
-			*pixel = (uint8_t) color;
-			break;
-		}
-		case 15:
-		case 16:
-		{
-			uint16_t *pixel = fb + pitch * y + 2 * x;
-			*pixel = (uint16_t) color;
-			break;
-		}
-		case 24:
-		{
-			uint32_t *pixel = fb + pitch * y + 3 * x;
-			*pixel = color;
-			break;
-		}
-		case 32:
-		{
-			uint32_t *pixel = fb + pitch * y + 4 * x;
-			*pixel = color;
-			break;
-		}
-	}
+	uint32_t *pixel = fb + pitch * y + 4 * x;
+	*pixel = color;
 }
