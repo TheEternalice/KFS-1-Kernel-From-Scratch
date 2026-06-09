@@ -53,6 +53,7 @@ static char
 	scancode_to_char(uint8_t scancode)
 {
 	static const char normal_map[KEYBOARD_SCANCODE_MAP_SIZE] = {
+		[KEYBOARD_SCANCODE_GRAVE] = '`',
 		[KEYBOARD_SCANCODE_1] = '1',
 		[KEYBOARD_SCANCODE_2] = '2',
 		[KEYBOARD_SCANCODE_3] = '3',
@@ -63,7 +64,10 @@ static char
 		[KEYBOARD_SCANCODE_8] = '8',
 		[KEYBOARD_SCANCODE_9] = '9',
 		[KEYBOARD_SCANCODE_0] = '0',
+		[KEYBOARD_SCANCODE_MINUS] = '-',
+		[KEYBOARD_SCANCODE_EQUAL] = '=',
 		[KEYBOARD_SCANCODE_BACKSPACE] = '\b',
+		[KEYBOARD_SCANCODE_TAB] = '\t',
 		[KEYBOARD_SCANCODE_Q] = 'q',
 		[KEYBOARD_SCANCODE_W] = 'w',
 		[KEYBOARD_SCANCODE_E] = 'e',
@@ -74,6 +78,8 @@ static char
 		[KEYBOARD_SCANCODE_I] = 'i',
 		[KEYBOARD_SCANCODE_O] = 'o',
 		[KEYBOARD_SCANCODE_P] = 'p',
+		[KEYBOARD_SCANCODE_LBRACKET] = '[',
+		[KEYBOARD_SCANCODE_RBRACKET] = ']',
 		[KEYBOARD_SCANCODE_ENTER] = '\n',
 		[KEYBOARD_SCANCODE_A] = 'a',
 		[KEYBOARD_SCANCODE_S] = 's',
@@ -84,6 +90,9 @@ static char
 		[KEYBOARD_SCANCODE_J] = 'j',
 		[KEYBOARD_SCANCODE_K] = 'k',
 		[KEYBOARD_SCANCODE_L] = 'l',
+		[KEYBOARD_SCANCODE_SEMICOLON] = ';',
+		[KEYBOARD_SCANCODE_APOSTROPHE] = '\'',
+		[KEYBOARD_SCANCODE_BACKSLASH] = '\\',
 		[KEYBOARD_SCANCODE_Z] = 'z',
 		[KEYBOARD_SCANCODE_X] = 'x',
 		[KEYBOARD_SCANCODE_C] = 'c',
@@ -93,7 +102,35 @@ static char
 		[KEYBOARD_SCANCODE_M] = 'm',
 		[KEYBOARD_SCANCODE_SPACE] = ' '
 	};
+
+	static const char shift_map[KEYBOARD_SCANCODE_MAP_SIZE] = {
+		[KEYBOARD_SCANCODE_1] = '!',
+		[KEYBOARD_SCANCODE_2] = '@',
+		[KEYBOARD_SCANCODE_3] = '#',
+		[KEYBOARD_SCANCODE_4] = '$',
+		[KEYBOARD_SCANCODE_5] = '%',
+		[KEYBOARD_SCANCODE_6] = '^',
+		[KEYBOARD_SCANCODE_7] = '&',
+		[KEYBOARD_SCANCODE_8] = '*',
+		[KEYBOARD_SCANCODE_9] = '(',
+		[KEYBOARD_SCANCODE_0] = ')',
+		[KEYBOARD_SCANCODE_MINUS] = '_',
+		[KEYBOARD_SCANCODE_EQUAL] = '+',
+		[KEYBOARD_SCANCODE_LBRACKET] = '{',
+		[KEYBOARD_SCANCODE_RBRACKET] = '}',
+		[KEYBOARD_SCANCODE_SEMICOLON] = ':',
+		[KEYBOARD_SCANCODE_APOSTROPHE] = '"',
+		[KEYBOARD_SCANCODE_GRAVE] = '~',
+		[KEYBOARD_SCANCODE_BACKSLASH] = '|'
+	};
 	char c;
+
+	if (g_shift_pressed)
+	{
+		c = shift_map[scancode];
+		if (c != 0)
+			return c;
+	}
 
 	c = normal_map[scancode];
 	if (g_shift_pressed && c >= 'a' && c <= 'z')

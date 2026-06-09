@@ -24,7 +24,7 @@ CFLAGS			=	-m32 -ffreestanding -Wall -Wextra -Werror -fno-builtin -fno-exception
 
 ASFLAGS			=	--32
 
-LDFLAGS			=	-m elf_i386 -T $(LINKER_SCRIPT) -nostdlib -nodefaultlibs
+LDFLAGS			=	-m elf_i386 -T $(LINKER_SCRIPT)
 
 RM				=	rm -f
 
@@ -61,4 +61,16 @@ fclean: clean
 
 re: fclean all
 
-.PHONY: all iso clean fclean re
+docker-build:
+	docker compose build
+
+docker:
+	docker compose run --rm kfs make
+
+docker-iso:
+	docker compose run --rm kfs make iso
+
+docker-clean:
+	docker compose run --rm kfs make fclean
+
+.PHONY: all iso clean fclean re docker-build docker docker-iso docker-clean
