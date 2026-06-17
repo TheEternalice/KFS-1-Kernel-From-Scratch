@@ -8,12 +8,9 @@
 # define GRAPHIC_COLOR_RED		0xFF0000
 
 # define FRAMEBUFFER_DEFAULT_COLOR	GRAPHIC_COLOR_WHITE
-
-# define SCREEN_WIDTH 1920
-# define SCREEN_HEIGHT 1080
-
-# define FRAMEBUFFER_CHAR_WIDTH		8
-# define FRAMEBUFFER_CHAR_HEIGHT	16
+# define FRAMEBUFFER_CHAR_WIDTH		GLYPH_WIDTH
+# define FRAMEBUFFER_CHAR_HEIGHT	GLYPH_HEIGHT
+# define FRAMEBUFFER_BYTES_PER_PIXEL	4
 
 # include "../multiboot2.h"
 # include <stdint.h>
@@ -23,40 +20,22 @@
 typedef struct s_framebuffer
 {
 	struct multiboot_tag_framebuffer *tag;
-	unsigned cursor_x;
-	unsigned cursor_y;
 }	t_framebuffer;
 
 extern t_framebuffer g_framebuffer;
 
-void
-	framebuffer_init(struct multiboot_tag_framebuffer *tagfb);
-
-unsigned
-	framebuffer_width(void);
-
-unsigned
-	framebuffer_height(void);
-
-void
-	framebuffer_set_cursor(unsigned x, unsigned y);
-
-void
-	framebuffer_fill_rect(unsigned x, unsigned y,
-							unsigned width, unsigned height,
-							uint32_t rgb);
-
-void
-	framebuffer_scroll_up(unsigned y, unsigned height,
-							unsigned offset, uint32_t rgb);
-
-void
-	framebuffer_clear(uint32_t rgb);
-
-void
-	framebuffer_draw_char(unsigned char c);
-
-void
-	framebuffer_draw_string(const char *str);
+void		framebuffer_init(struct multiboot_tag_framebuffer *tagfb);
+unsigned	framebuffer_width(void);
+unsigned	framebuffer_height(void);
+void		framebuffer_clear(uint32_t rgb);
+void		framebuffer_fill_rect(unsigned x, unsigned y,
+									unsigned width, unsigned height,
+									uint32_t rgb);
+void		framebuffer_scroll_up(unsigned y, unsigned height,
+									unsigned offset, uint32_t rgb);
+void		framebuffer_draw_glyph(unsigned x, unsigned y,
+									unsigned char c, uint32_t fg, uint32_t bg);
+void		framebuffer_draw_glyph_overlay(unsigned x, unsigned y,
+											unsigned char c, uint32_t fg);
 
 #endif

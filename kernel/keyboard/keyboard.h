@@ -120,11 +120,26 @@
 # define KEYBOARD_SCANCODE_RWIN		0x5c
 # define KEYBOARD_SCANCODE_MENU		0x5d
 
+# define KEYBOARD_CHAR_NEWLINE		'\n'
+# define KEYBOARD_CHAR_BACKSPACE	'\b'
+
 # define KEYBOARD_KEY_LEFT		0x0100
 # define KEYBOARD_KEY_RIGHT		0x0101
 # define KEYBOARD_KEY_UP		0x0102
 # define KEYBOARD_KEY_DOWN		0x0103
 # define KEYBOARD_KEY_DELETE	0x0104
+# define KEYBOARD_KEY_F1		0x0105
+# define KEYBOARD_KEY_F2		0x0106
+# define KEYBOARD_KEY_F3		0x0107
+# define KEYBOARD_KEY_F4		0x0108
+# define KEYBOARD_KEY_F5		0x0109
+# define KEYBOARD_KEY_F6		0x010a
+# define KEYBOARD_KEY_F7		0x010b
+# define KEYBOARD_KEY_F8		0x010c
+# define KEYBOARD_KEY_F9		0x010d
+# define KEYBOARD_KEY_F10		0x010e
+# define KEYBOARD_KEY_F11		0x010f
+# define KEYBOARD_KEY_F12		0x0110
 
 typedef uint16_t	t_keyboard_key;
 
@@ -136,11 +151,9 @@ typedef struct s_keyboard_queue
 	unsigned count;
 }	t_keyboard_queue;
 
-# include "../framebuffer/screen.h"
-
 void	keyboard_init(void);
 void	keyboard_poll(void);
 int		keyboard_pop(t_keyboard_key *key);
-void	keyboard_write_loop(unsigned x, unsigned y);
+void	keyboard_write_loop(void);
 
 #endif

@@ -1,362 +1,358 @@
 #include "screen.h"
 
-t_keyboard_screen g_keyboard_screen;
+t_keyboard_screen g_screen;
 
-static void
-	keyboard_screen_update_cursor(void)
+static unsigned
+	column_to_pixel_x(unsigned col)
 {
-	g_keyboard_screen.cursor_x = g_keyboard_screen.start_x
-		+ g_keyboard_screen.cursor_col * FRAMEBUFFER_CHAR_WIDTH;
-	g_keyboard_screen.cursor_y = g_keyboard_screen.start_y
-		+ g_keyboard_screen.cursor_row * FRAMEBUFFER_CHAR_HEIGHT;
+	return KEYBOARD_AREA_START_X + col * FRAMEBUFFER_CHAR_WIDTH;
+}
+
+static unsigned
+	row_to_pixel_y(unsigned row)
+{
+	return KEYBOARD_AREA_START_Y + row * FRAMEBUFFER_CHAR_HEIGHT;
 }
 
 static void
-	keyboard_screen_render_line(unsigned row)
+	draw_cell(unsigned col, unsigned row, char c)
+{
+	framebuffer_draw_glyph(column_to_pixel_x(col), row_to_pixel_y(row),
+			(unsigned char) c, FRAMEBUFFER_DEFAULT_COLOR, GRAPHIC_COLOR_BLACK);
+}
+
+static void
+	redraw_line(unsigned row, unsigned from_col)
+{
+	t_terminal *t;
+	unsigned col;
+	unsigned len;
+	unsigned pixel_x;
+	unsigned pixel_y;
+
+	t = SCREEN_TERM();
+	if (from_col >= g_screen.columns)
+		return;
+	len = t->lengths[row];
+	pixel_x = column_to_pixel_x(from_col);
+	pixel_y = row_to_pixel_y(row);
+	framebuffer_fill_rect(pixel_x, pixel_y,
+			(g_screen.columns - from_col) * FRAMEBUFFER_CHAR_WIDTH,
+			FRAMEBUFFER_CHAR_HEIGHT, GRAPHIC_COLOR_BLACK);
+	col = from_col;
+	while (col < len)
+	{
+		draw_cell(col, row, t->lines[row][col]);
+		col++;
+	}
+}
+
+static void
+	redraw_all(void)
+{
+	t_terminal *t;
+	unsigned row;
+	unsigned pixel_y;
+
+	t = SCREEN_TERM();
+	pixel_y = row_to_pixel_y(0);
+	framebuffer_fill_rect(KEYBOARD_AREA_START_X, pixel_y, framebuffer_width(),
+			g_screen.rows * FRAMEBUFFER_CHAR_HEIGHT, GRAPHIC_COLOR_BLACK);
+	row = 0;
+	while (row < g_screen.rows)
+	{
+		if (t->lengths[row] > 0)
+			redraw_line(row, 0);
+		row++;
+	}
+}
+
+static void
+	clear_line(t_terminal *t, unsigned row, int from_newline)
 {
 	unsigned col;
-	unsigned y;
 
-	y = g_keyboard_screen.start_y + row * FRAMEBUFFER_CHAR_HEIGHT;
-	framebuffer_fill_rect(g_keyboard_screen.start_x, y,
-			g_keyboard_screen.columns * FRAMEBUFFER_CHAR_WIDTH,
-			FRAMEBUFFER_CHAR_HEIGHT, GRAPHIC_COLOR_BLACK);
+	t->lengths[row] = 0;
+	t->started_by_newline[row] = from_newline;
 	col = 0;
-	while (col < g_keyboard_screen.line_lengths[row])
+	while (col < SCREEN_MAX_COLUMNS)
+		t->lines[row][col++] = 0;
+}
+
+static void
+	newline(int from_enter_key)
+{
+	t_terminal *t;
+	unsigned row;
+	unsigned pixel_y;
+
+	t = SCREEN_TERM();
+	t->col = 0;
+	if (t->row + 1 >= g_screen.rows)
 	{
-		framebuffer_set_cursor(
-				g_keyboard_screen.start_x + col * FRAMEBUFFER_CHAR_WIDTH, y);
-		framebuffer_draw_char(g_keyboard_screen.lines[row][col]);
+		framebuffer_scroll_up(row_to_pixel_y(0),
+				g_screen.rows * FRAMEBUFFER_CHAR_HEIGHT,
+				FRAMEBUFFER_CHAR_HEIGHT, GRAPHIC_COLOR_BLACK);
+		row = 0;
+		while (row + 1 < g_screen.rows)
+		{
+			unsigned col;
+
+			t->lengths[row] = t->lengths[row + 1];
+			t->started_by_newline[row] = t->started_by_newline[row + 1];
+			col = 0;
+			while (col < SCREEN_MAX_COLUMNS)
+			{
+				t->lines[row][col] = t->lines[row + 1][col];
+				col++;
+			}
+			row++;
+		}
+		clear_line(t, g_screen.rows - 1, from_enter_key);
+		t->row = g_screen.rows - 1;
+	}
+	else
+	{
+		t->row++;
+		clear_line(t, t->row, from_enter_key);
+		pixel_y = row_to_pixel_y(t->row);
+		framebuffer_fill_rect(KEYBOARD_AREA_START_X, pixel_y,
+				g_screen.columns * FRAMEBUFFER_CHAR_WIDTH,
+				FRAMEBUFFER_CHAR_HEIGHT, GRAPHIC_COLOR_BLACK);
+	}
+}
+
+static void
+	put_char(char c)
+{
+	t_terminal *t;
+	unsigned row;
+	unsigned len;
+	unsigned col;
+
+	t = SCREEN_TERM();
+	row = t->row;
+	len = t->lengths[row];
+	if (t->col >= g_screen.columns)
+		newline(0);
+	if (len >= g_screen.columns && t->col >= g_screen.columns - 1)
+		return;
+	if (t->col == len)
+	{
+		t->lines[row][t->col] = c;
+		t->lengths[row] = len + 1;
+		draw_cell(t->col, row, c);
+		t->col++;
+	}
+	else
+	{
+		col = len;
+		while (col > t->col)
+		{
+			t->lines[row][col] = t->lines[row][col - 1];
+			col--;
+		}
+		t->lines[row][t->col] = c;
+		t->lengths[row] = len + 1;
+		redraw_line(row, t->col);
+		t->col++;
+	}
+	if (t->col >= g_screen.columns)
+		newline(0);
+}
+
+static void
+	delete_at(unsigned col, unsigned row)
+{
+	t_terminal *t;
+	unsigned len;
+	unsigned start;
+
+	t = SCREEN_TERM();
+	len = t->lengths[row];
+	start = col;
+	if (col >= len)
+		return;
+	while (col + 1 < len)
+	{
+		t->lines[row][col] = t->lines[row][col + 1];
 		col++;
+	}
+	t->lines[row][len - 1] = 0;
+	t->lengths[row] = len - 1;
+	redraw_line(row, start);
+}
+
+static void
+	draw_status_bar(void)
+{
+	unsigned i;
+	unsigned tab_pixel_x;
+	uint32_t foreground_color;
+
+	framebuffer_fill_rect(0, 0, framebuffer_width(), FRAMEBUFFER_CHAR_HEIGHT,
+			GRAPHIC_COLOR_BLUE);
+	tab_pixel_x = 8;
+	i = 0;
+	while (i < VIRTUAL_DESKTOP_COUNT)
+	{
+		foreground_color = (i == g_screen.active) ? GRAPHIC_COLOR_GREEN
+			: FRAMEBUFFER_DEFAULT_COLOR;
+		framebuffer_draw_glyph(tab_pixel_x, 0, 'F', foreground_color,
+				GRAPHIC_COLOR_BLUE);
+		framebuffer_draw_glyph(tab_pixel_x + FRAMEBUFFER_CHAR_WIDTH, 0,
+				'1' + (unsigned char) i, foreground_color, GRAPHIC_COLOR_BLUE);
+		tab_pixel_x += FRAMEBUFFER_CHAR_WIDTH * 4;
+		i++;
 	}
 }
 
 void
 	keyboard_screen_erase_cursor(void)
 {
-	keyboard_screen_render_line(g_keyboard_screen.cursor_row);
+	t_terminal *t;
+	char c;
+
+	if (!g_screen.cursor_on)
+		return;
+	t = SCREEN_TERM();
+	c = (t->col < t->lengths[t->row]) ? t->lines[t->row][t->col] : ' ';
+	draw_cell(t->col, t->row, c);
+	g_screen.cursor_on = 0;
 }
 
 void
 	keyboard_screen_draw_cursor(void)
 {
-	keyboard_screen_update_cursor();
-	framebuffer_set_cursor(g_keyboard_screen.cursor_x,
-			g_keyboard_screen.cursor_y);
-	framebuffer_draw_char(KEYBOARD_CURSOR_CHAR);
+	t_terminal *t;
+	char c;
+
+	t = SCREEN_TERM();
+	c = (t->col < t->lengths[t->row]) ? t->lines[t->row][t->col] : ' ';
+	draw_cell(t->col, t->row, c);
+	framebuffer_draw_glyph_overlay(column_to_pixel_x(t->col),
+			row_to_pixel_y(t->row), GLYPH_CURSOR, FRAMEBUFFER_DEFAULT_COLOR);
+	g_screen.cursor_on = 1;
 }
 
-static void
-	keyboard_screen_copy_line(unsigned dst, unsigned src)
+void
+	keyboard_screen_putchar(char c)
 {
-	unsigned col;
-
-	g_keyboard_screen.line_lengths[dst] = g_keyboard_screen.line_lengths[src];
-	g_keyboard_screen.line_started_by_newline[dst]
-		= g_keyboard_screen.line_started_by_newline[src];
-	col = 0;
-	while (col < KEYBOARD_MAX_COLUMNS)
-	{
-		g_keyboard_screen.lines[dst][col] = g_keyboard_screen.lines[src][col];
-		col++;
-	}
-}
-
-static void
-	keyboard_screen_clear_line(unsigned row, int started_by_newline)
-{
-	unsigned col;
-
-	g_keyboard_screen.line_lengths[row] = 0;
-	g_keyboard_screen.line_started_by_newline[row] = started_by_newline;
-	col = 0;
-	while (col < KEYBOARD_MAX_COLUMNS)
-	{
-		g_keyboard_screen.lines[row][col] = 0;
-		col++;
-	}
-}
-
-static void
-	keyboard_screen_remove_line(unsigned row)
-{
-	while (row + 1 < g_keyboard_screen.rows)
-	{
-		keyboard_screen_copy_line(row, row + 1);
-		keyboard_screen_render_line(row);
-		row++;
-	}
-	keyboard_screen_clear_line(g_keyboard_screen.rows - 1, KEYBOARD_LINE_WRAP);
-	keyboard_screen_render_line(g_keyboard_screen.rows - 1);
-}
-
-static void
-	keyboard_screen_merge_next_line(void)
-{
-	unsigned dst;
-	unsigned src;
-	unsigned next_row;
-
-	next_row = g_keyboard_screen.cursor_row + 1;
-	if (next_row >= g_keyboard_screen.rows)
-		return;
-	dst = g_keyboard_screen.line_lengths[g_keyboard_screen.cursor_row];
-	src = 0;
-	while (src < g_keyboard_screen.line_lengths[next_row]
-		&& dst < g_keyboard_screen.columns)
-	{
-		g_keyboard_screen.lines[g_keyboard_screen.cursor_row][dst]
-			= g_keyboard_screen.lines[next_row][src];
-		dst++;
-		src++;
-	}
-	g_keyboard_screen.line_lengths[g_keyboard_screen.cursor_row] = dst;
-	keyboard_screen_render_line(g_keyboard_screen.cursor_row);
-	keyboard_screen_remove_line(next_row);
-}
-
-static void
-	keyboard_screen_scroll(int started_by_newline)
-{
-	unsigned row;
-
-	framebuffer_scroll_up(g_keyboard_screen.start_y,
-			g_keyboard_screen.rows * FRAMEBUFFER_CHAR_HEIGHT,
-			FRAMEBUFFER_CHAR_HEIGHT, GRAPHIC_COLOR_BLACK);
-	row = 0;
-	while (row + 1 < g_keyboard_screen.rows)
-	{
-		keyboard_screen_copy_line(row, row + 1);
-		row++;
-	}
-	keyboard_screen_clear_line(g_keyboard_screen.rows - 1,
-			started_by_newline);
-	g_keyboard_screen.cursor_row = g_keyboard_screen.rows - 1;
-}
-
-static void
-	keyboard_screen_next_line(int started_by_newline)
-{
-	g_keyboard_screen.cursor_col = 0;
-	if (g_keyboard_screen.cursor_row + 1 >= g_keyboard_screen.rows)
-		keyboard_screen_scroll(started_by_newline);
+	if (c == KEYBOARD_CHAR_NEWLINE)
+		newline(1);
 	else
-	{
-		g_keyboard_screen.cursor_row++;
-		keyboard_screen_clear_line(g_keyboard_screen.cursor_row,
-				started_by_newline);
-		keyboard_screen_render_line(g_keyboard_screen.cursor_row);
-	}
-}
-
-static void
-	keyboard_screen_write_char(char c)
-{
-	unsigned col;
-	unsigned len;
-
-	len = g_keyboard_screen.line_lengths[g_keyboard_screen.cursor_row];
-	if (g_keyboard_screen.cursor_col >= g_keyboard_screen.columns)
-		keyboard_screen_next_line(KEYBOARD_LINE_WRAP);
-	if (len >= g_keyboard_screen.columns
-		&& g_keyboard_screen.cursor_col >= g_keyboard_screen.columns - 1)
-		return;
-	if (len >= g_keyboard_screen.columns)
-		len = g_keyboard_screen.columns - 1;
-	col = len;
-	while (col > g_keyboard_screen.cursor_col)
-	{
-		g_keyboard_screen.lines[g_keyboard_screen.cursor_row][col]
-			= g_keyboard_screen.lines[g_keyboard_screen.cursor_row][col - 1];
-		col--;
-	}
-	g_keyboard_screen.lines[g_keyboard_screen.cursor_row]
-		[g_keyboard_screen.cursor_col] = c;
-	g_keyboard_screen.line_lengths[g_keyboard_screen.cursor_row] = len + 1;
-	keyboard_screen_render_line(g_keyboard_screen.cursor_row);
-	g_keyboard_screen.cursor_col++;
-	if (g_keyboard_screen.cursor_col >= g_keyboard_screen.columns)
-		keyboard_screen_next_line(KEYBOARD_LINE_WRAP);
-}
-
-static void
-	keyboard_screen_delete_char_at(unsigned col, unsigned row)
-{
-	unsigned len;
-
-	len = g_keyboard_screen.line_lengths[row];
-	if (col >= len)
-		return;
-	while (col + 1 < len)
-	{
-		g_keyboard_screen.lines[row][col] = g_keyboard_screen.lines[row][col + 1];
-		col++;
-	}
-	g_keyboard_screen.lines[row][len - 1] = 0;
-	g_keyboard_screen.line_lengths[row] = len - 1;
-	keyboard_screen_render_line(row);
-}
-
-static void
-	keyboard_screen_delete_previous_char(void)
-{
-	if (g_keyboard_screen.cursor_col > 0)
-	{
-		g_keyboard_screen.cursor_col--;
-		keyboard_screen_delete_char_at(g_keyboard_screen.cursor_col,
-				g_keyboard_screen.cursor_row);
-	}
-	else if (g_keyboard_screen.cursor_row > 0
-		&& g_keyboard_screen.line_started_by_newline
-			[g_keyboard_screen.cursor_row])
-	{
-		g_keyboard_screen.cursor_row--;
-		g_keyboard_screen.cursor_col
-			= g_keyboard_screen.line_lengths[g_keyboard_screen.cursor_row];
-		keyboard_screen_merge_next_line();
-	}
-	else if (g_keyboard_screen.cursor_row > 0)
-	{
-		g_keyboard_screen.cursor_row--;
-		g_keyboard_screen.cursor_col
-			= g_keyboard_screen.line_lengths[g_keyboard_screen.cursor_row];
-		keyboard_screen_delete_previous_char();
-	}
-}
-
-static void
-	keyboard_screen_delete_next_char(void)
-{
-	if (g_keyboard_screen.cursor_col
-		< g_keyboard_screen.line_lengths[g_keyboard_screen.cursor_row])
-		keyboard_screen_delete_char_at(g_keyboard_screen.cursor_col,
-				g_keyboard_screen.cursor_row);
-	else if (g_keyboard_screen.cursor_row + 1 < g_keyboard_screen.rows
-		&& g_keyboard_screen.line_started_by_newline
-			[g_keyboard_screen.cursor_row + 1])
-		keyboard_screen_merge_next_line();
-}
-
-static void
-	keyboard_screen_move_cursor_left(void)
-{
-	if (g_keyboard_screen.cursor_col > 0)
-		g_keyboard_screen.cursor_col--;
-	else if (g_keyboard_screen.cursor_row > 0)
-	{
-		g_keyboard_screen.cursor_row--;
-		g_keyboard_screen.cursor_col
-			= g_keyboard_screen.line_lengths[g_keyboard_screen.cursor_row];
-	}
-}
-
-static void
-	keyboard_screen_move_cursor_right(void)
-{
-	if (g_keyboard_screen.cursor_col
-		< g_keyboard_screen.line_lengths[g_keyboard_screen.cursor_row])
-		g_keyboard_screen.cursor_col++;
-	else if (g_keyboard_screen.cursor_row + 1 < g_keyboard_screen.rows
-		&& g_keyboard_screen.line_started_by_newline
-			[g_keyboard_screen.cursor_row + 1])
-	{
-		g_keyboard_screen.cursor_row++;
-		g_keyboard_screen.cursor_col = 0;
-	}
-}
-
-static void
-	keyboard_screen_move_cursor_up(void)
-{
-	if (g_keyboard_screen.cursor_row == 0)
-		return;
-	g_keyboard_screen.cursor_row--;
-	if (g_keyboard_screen.cursor_col
-		> g_keyboard_screen.line_lengths[g_keyboard_screen.cursor_row])
-		g_keyboard_screen.cursor_col
-			= g_keyboard_screen.line_lengths[g_keyboard_screen.cursor_row];
-}
-
-static void
-	keyboard_screen_move_cursor_down(void)
-{
-	if (g_keyboard_screen.cursor_row + 1 >= g_keyboard_screen.rows)
-		return;
-	if (!g_keyboard_screen.line_started_by_newline
-		[g_keyboard_screen.cursor_row + 1]
-		&& g_keyboard_screen.line_lengths[g_keyboard_screen.cursor_row + 1] == 0)
-		return;
-	g_keyboard_screen.cursor_row++;
-	if (g_keyboard_screen.cursor_col
-		> g_keyboard_screen.line_lengths[g_keyboard_screen.cursor_row])
-		g_keyboard_screen.cursor_col
-			= g_keyboard_screen.line_lengths[g_keyboard_screen.cursor_row];
+		put_char(c);
 }
 
 void
 	keyboard_screen_handle_key(t_keyboard_key key)
 {
+	t_terminal *t;
+
+	if (key >= KEYBOARD_KEY_F1
+		&& key < KEYBOARD_KEY_F1 + VIRTUAL_DESKTOP_COUNT)
+	{
+		unsigned index;
+
+		index = (unsigned) (key - KEYBOARD_KEY_F1);
+		if (index != g_screen.active)
+		{
+			keyboard_screen_erase_cursor();
+			g_screen.active = index;
+			redraw_all();
+			draw_status_bar();
+			keyboard_screen_draw_cursor();
+		}
+		return;
+	}
+	t = SCREEN_TERM();
 	switch (key)
 	{
 		case KEYBOARD_KEY_LEFT:
-			keyboard_screen_move_cursor_left();
+			if (t->col > 0)
+				t->col--;
+			else if (t->row > 0)
+			{
+				t->row--;
+				t->col = t->lengths[t->row];
+			}
 			break;
 		case KEYBOARD_KEY_RIGHT:
-			keyboard_screen_move_cursor_right();
+			if (t->col < t->lengths[t->row])
+				t->col++;
+			else if (t->row + 1 < g_screen.rows
+				&& t->started_by_newline[t->row + 1])
+			{
+				t->row++;
+				t->col = 0;
+			}
 			break;
 		case KEYBOARD_KEY_UP:
-			keyboard_screen_move_cursor_up();
+			if (t->row > 0)
+			{
+				t->row--;
+				if (t->col > t->lengths[t->row])
+					t->col = t->lengths[t->row];
+			}
 			break;
 		case KEYBOARD_KEY_DOWN:
-			keyboard_screen_move_cursor_down();
+			if (t->row + 1 >= g_screen.rows)
+				break;
+			if (!t->started_by_newline[t->row + 1]
+				&& t->lengths[t->row + 1] == 0)
+				break;
+			t->row++;
+			if (t->col > t->lengths[t->row])
+				t->col = t->lengths[t->row];
 			break;
 		case KEYBOARD_KEY_DELETE:
-			keyboard_screen_delete_next_char();
+			delete_at(t->col, t->row);
 			break;
-		case KEYBOARD_NEWLINE:
-			keyboard_screen_next_line(KEYBOARD_LINE_BREAK);
+		case KEYBOARD_CHAR_NEWLINE:
+			newline(1);
 			break;
-		case KEYBOARD_BACKSPACE:
-			keyboard_screen_delete_previous_char();
+		case KEYBOARD_CHAR_BACKSPACE:
+			if (t->col > 0)
+			{
+				t->col--;
+				delete_at(t->col, t->row);
+			}
 			break;
 		default:
-			keyboard_screen_write_char((char) key);
+			put_char((char) key);
 			break;
 	}
 }
 
 void
-	keyboard_screen_init(unsigned x, unsigned y)
+	keyboard_screen_init(void)
 {
+	unsigned i;
 	unsigned row;
+	unsigned height;
 
-	if (x >= framebuffer_width())
-		x = framebuffer_width() - FRAMEBUFFER_CHAR_WIDTH;
-	if (y >= framebuffer_height())
-		y = framebuffer_height() - FRAMEBUFFER_CHAR_HEIGHT;
-	g_keyboard_screen.start_x = 0;
-	g_keyboard_screen.start_y = 0;
-	g_keyboard_screen.columns = framebuffer_width() / FRAMEBUFFER_CHAR_WIDTH;
-	g_keyboard_screen.rows = framebuffer_height() / FRAMEBUFFER_CHAR_HEIGHT;
-	if (g_keyboard_screen.rows > KEYBOARD_MAX_ROWS)
-		g_keyboard_screen.rows = KEYBOARD_MAX_ROWS;
-	if (g_keyboard_screen.columns > KEYBOARD_MAX_COLUMNS)
-		g_keyboard_screen.columns = KEYBOARD_MAX_COLUMNS;
-	if (g_keyboard_screen.columns == 0)
-		g_keyboard_screen.columns = 1;
-	if (g_keyboard_screen.rows == 0)
-		g_keyboard_screen.rows = 1;
-	g_keyboard_screen.cursor_col = x / FRAMEBUFFER_CHAR_WIDTH;
-	g_keyboard_screen.cursor_row = y / FRAMEBUFFER_CHAR_HEIGHT;
-	if (g_keyboard_screen.cursor_col >= g_keyboard_screen.columns)
-		g_keyboard_screen.cursor_col = g_keyboard_screen.columns - 1;
-	if (g_keyboard_screen.cursor_row >= g_keyboard_screen.rows)
-		g_keyboard_screen.cursor_row = g_keyboard_screen.rows - 1;
-	row = 0;
-	while (row < KEYBOARD_MAX_ROWS)
+	height = framebuffer_height();
+	g_screen.columns = framebuffer_width() / FRAMEBUFFER_CHAR_WIDTH;
+	g_screen.rows = (height - KEYBOARD_AREA_START_Y) / FRAMEBUFFER_CHAR_HEIGHT;
+	if (g_screen.columns > SCREEN_MAX_COLUMNS)
+		g_screen.columns = SCREEN_MAX_COLUMNS;
+	if (g_screen.rows > SCREEN_MAX_ROWS)
+		g_screen.rows = SCREEN_MAX_ROWS;
+	if (g_screen.columns == 0)
+		g_screen.columns = 1;
+	if (g_screen.rows == 0)
+		g_screen.rows = 1;
+	g_screen.active = 0;
+	g_screen.cursor_on = 0;
+	i = 0;
+	while (i < VIRTUAL_DESKTOP_COUNT)
 	{
-		keyboard_screen_clear_line(row, KEYBOARD_LINE_WRAP);
-		row++;
+		g_screen.terms[i].col = 0;
+		g_screen.terms[i].row = 0;
+		row = 0;
+		while (row < SCREEN_MAX_ROWS)
+			clear_line(&g_screen.terms[i], row++, 0);
+		i++;
 	}
-	keyboard_screen_update_cursor();
+	draw_status_bar();
 }

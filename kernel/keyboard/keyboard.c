@@ -1,4 +1,6 @@
 #include "keyboard.h"
+#include "kfs_config.h"
+#include "../framebuffer/screen.h"
 
 static t_keyboard_queue g_keyboard_queue;
 static int g_shift_pressed;
@@ -66,7 +68,7 @@ static char
 		[KEYBOARD_SCANCODE_0] = '0',
 		[KEYBOARD_SCANCODE_MINUS] = '-',
 		[KEYBOARD_SCANCODE_EQUAL] = '=',
-		[KEYBOARD_SCANCODE_BACKSPACE] = '\b',
+		[KEYBOARD_SCANCODE_BACKSPACE] = KEYBOARD_CHAR_BACKSPACE,
 		[KEYBOARD_SCANCODE_TAB] = '\t',
 		[KEYBOARD_SCANCODE_Q] = 'q',
 		[KEYBOARD_SCANCODE_W] = 'w',
@@ -80,7 +82,7 @@ static char
 		[KEYBOARD_SCANCODE_P] = 'p',
 		[KEYBOARD_SCANCODE_LBRACKET] = '[',
 		[KEYBOARD_SCANCODE_RBRACKET] = ']',
-		[KEYBOARD_SCANCODE_ENTER] = '\n',
+		[KEYBOARD_SCANCODE_ENTER] = KEYBOARD_CHAR_NEWLINE,
 		[KEYBOARD_SCANCODE_A] = 'a',
 		[KEYBOARD_SCANCODE_S] = 's',
 		[KEYBOARD_SCANCODE_D] = 'd',
@@ -190,6 +192,35 @@ static int
 	}
 }
 
+static t_keyboard_key
+	function_key_from_scancode(uint8_t scancode)
+{
+	static const uint8_t function_key_scancodes[12] = {
+		KEYBOARD_SCANCODE_F1,
+		KEYBOARD_SCANCODE_F2,
+		KEYBOARD_SCANCODE_F3,
+		KEYBOARD_SCANCODE_F4,
+		KEYBOARD_SCANCODE_F5,
+		KEYBOARD_SCANCODE_F6,
+		KEYBOARD_SCANCODE_F7,
+		KEYBOARD_SCANCODE_F8,
+		KEYBOARD_SCANCODE_F9,
+		KEYBOARD_SCANCODE_F10,
+		KEYBOARD_SCANCODE_F11,
+		KEYBOARD_SCANCODE_F12
+	};
+	unsigned index;
+
+	index = 0;
+	while (index < VIRTUAL_DESKTOP_COUNT)
+	{
+		if (scancode == function_key_scancodes[index])
+			return (t_keyboard_key) (KEYBOARD_KEY_F1 + index);
+		index++;
+	}
+	return 0;
+}
+
 void
 	keyboard_poll(void)
 {
@@ -227,27 +258,38 @@ void
 	}
 	if (scancode & KEYBOARD_SCANCODE_RELEASE)
 		return;
+	key = function_key_from_scancode(scancode);
+	if (key != 0)
+	{
+		queue_push(key);
+		return;
+	}
 	c = scancode_to_char(scancode);
 	if (c != 0)
 		queue_push(c);
 }
 
 void
-	keyboard_write_loop(unsigned x, unsigned y)
+	keyboard_write_loop(void)
 {
 	t_keyboard_key key;
+	int needs_cursor;
 
 	keyboard_init();
-	keyboard_screen_init(x, y);
 	keyboard_screen_draw_cursor();
 	while (1)
 	{
 		keyboard_poll();
 		while (keyboard_pop(&key))
 		{
+			needs_cursor = 1;
 			keyboard_screen_erase_cursor();
 			keyboard_screen_handle_key(key);
-			keyboard_screen_draw_cursor();
+			if (key >= KEYBOARD_KEY_F1
+				&& key < KEYBOARD_KEY_F1 + VIRTUAL_DESKTOP_COUNT)
+				needs_cursor = 0;
+			if (needs_cursor)
+				keyboard_screen_draw_cursor();
 		}
 		__asm__ volatile ("pause");
 	}
