@@ -13,5 +13,6 @@ void kernel_main(uint32_t magic, uint32_t multiboot_info_addr)
 	framebuffer_clear(GRAPHIC_COLOR_BLACK);
 	keyboard_screen_init();
 	multiboot_info_print(multiboot_info_addr);
+	printk("42\n");
 	keyboard_write_loop();
 }
