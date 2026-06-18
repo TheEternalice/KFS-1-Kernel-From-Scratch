@@ -1,4 +1,5 @@
 #include "libc.h"
+#include "../framebuffer/screen.h"
 
 void	itoa_base(char *buf, int base, int d)
 {
@@ -47,7 +48,7 @@ void	printk(const char *format, ...)
 	while ((c = *format++) != 0)
 	{
 		if (c != '%')
-			framebuffer_draw_char(c);
+			keyboard_screen_putchar(c);
 		else
 		{
 			char *p, *p2;
@@ -84,13 +85,13 @@ void	printk(const char *format, ...)
 					string:
 					for (p2 = p; *p2; p2++);
 					for (; p2 < p + pad; p2++)
-						framebuffer_draw_char(pad0 ? '0' : ' ');
+						keyboard_screen_putchar(pad0 ? '0' : ' ');
 					while (*p)
-						framebuffer_draw_char(*p++);
+						keyboard_screen_putchar(*p++);
 					break;
 
 				default:
-					framebuffer_draw_char(*((int *) arg++));
+					keyboard_screen_putchar(*((int *) arg++));
 					break;
 			}
 		}

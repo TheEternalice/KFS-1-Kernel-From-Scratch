@@ -1,36 +1,40 @@
 #ifndef KEYBOARD_SCREEN_H
 # define KEYBOARD_SCREEN_H
 
+# include "kfs_config.h"
 # include "../keyboard/keyboard.h"
 # include "framebuffer.h"
-# include "glyph.h"
 
-# define KEYBOARD_MAX_ROWS		128
-# define KEYBOARD_MAX_COLUMNS	256
-# define KEYBOARD_CURSOR_CHAR	GLYPH_CURSOR
-# define KEYBOARD_NEWLINE		'\n'
-# define KEYBOARD_BACKSPACE		'\b'
-# define KEYBOARD_LINE_WRAP		0
-# define KEYBOARD_LINE_BREAK	1
+# define SCREEN_MAX_COLUMNS		(SCREEN_WIDTH / FRAMEBUFFER_CHAR_WIDTH)
+# define SCREEN_MAX_ROWS		(SCREEN_HEIGHT / FRAMEBUFFER_CHAR_HEIGHT)
+
+# define KEYBOARD_AREA_START_X		0
+# define KEYBOARD_AREA_START_Y		FRAMEBUFFER_CHAR_HEIGHT
+
+# define SCREEN_TERM()				(&g_screen.terms[g_screen.active])
+
+typedef struct s_terminal
+{
+	unsigned col;
+	unsigned row;
+	unsigned lengths[SCREEN_MAX_ROWS];
+	int started_by_newline[SCREEN_MAX_ROWS];
+	char lines[SCREEN_MAX_ROWS][SCREEN_MAX_COLUMNS];
+}	t_terminal;
 
 typedef struct s_keyboard_screen
 {
-	unsigned start_x;
-	unsigned start_y;
-	unsigned cursor_col;
-	unsigned cursor_row;
-	unsigned cursor_x;
-	unsigned cursor_y;
 	unsigned columns;
 	unsigned rows;
-	unsigned line_lengths[KEYBOARD_MAX_ROWS];
-	int line_started_by_newline[KEYBOARD_MAX_ROWS];
-	char lines[KEYBOARD_MAX_ROWS][KEYBOARD_MAX_COLUMNS];
+	unsigned active;
+	int cursor_on;
+	t_terminal terms[VIRTUAL_DESKTOP_COUNT];
 }	t_keyboard_screen;
 
-extern t_keyboard_screen g_keyboard_screen;
+extern t_keyboard_screen g_screen;
 
-void	keyboard_screen_init(unsigned x, unsigned y);
+void	keyboard_screen_init(void);
+void	keyboard_screen_putchar(char c);
 void	keyboard_screen_draw_cursor(void);
 void	keyboard_screen_erase_cursor(void);
 void	keyboard_screen_handle_key(t_keyboard_key key);

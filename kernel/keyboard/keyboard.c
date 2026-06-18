@@ -1,4 +1,6 @@
 #include "keyboard.h"
+#include "kfs_config.h"
+#include "../framebuffer/screen.h"
 
 static t_keyboard_queue g_keyboard_queue;
 static int g_shift_pressed;
@@ -53,6 +55,7 @@ static char
 	scancode_to_char(uint8_t scancode)
 {
 	static const char normal_map[KEYBOARD_SCANCODE_MAP_SIZE] = {
+		[KEYBOARD_SCANCODE_GRAVE] = '`',
 		[KEYBOARD_SCANCODE_1] = '1',
 		[KEYBOARD_SCANCODE_2] = '2',
 		[KEYBOARD_SCANCODE_3] = '3',
@@ -63,7 +66,10 @@ static char
 		[KEYBOARD_SCANCODE_8] = '8',
 		[KEYBOARD_SCANCODE_9] = '9',
 		[KEYBOARD_SCANCODE_0] = '0',
-		[KEYBOARD_SCANCODE_BACKSPACE] = '\b',
+		[KEYBOARD_SCANCODE_MINUS] = '-',
+		[KEYBOARD_SCANCODE_EQUAL] = '=',
+		[KEYBOARD_SCANCODE_BACKSPACE] = KEYBOARD_CHAR_BACKSPACE,
+		[KEYBOARD_SCANCODE_TAB] = '\t',
 		[KEYBOARD_SCANCODE_Q] = 'q',
 		[KEYBOARD_SCANCODE_W] = 'w',
 		[KEYBOARD_SCANCODE_E] = 'e',
@@ -74,7 +80,9 @@ static char
 		[KEYBOARD_SCANCODE_I] = 'i',
 		[KEYBOARD_SCANCODE_O] = 'o',
 		[KEYBOARD_SCANCODE_P] = 'p',
-		[KEYBOARD_SCANCODE_ENTER] = '\n',
+		[KEYBOARD_SCANCODE_LBRACKET] = '[',
+		[KEYBOARD_SCANCODE_RBRACKET] = ']',
+		[KEYBOARD_SCANCODE_ENTER] = KEYBOARD_CHAR_NEWLINE,
 		[KEYBOARD_SCANCODE_A] = 'a',
 		[KEYBOARD_SCANCODE_S] = 's',
 		[KEYBOARD_SCANCODE_D] = 'd',
@@ -84,6 +92,9 @@ static char
 		[KEYBOARD_SCANCODE_J] = 'j',
 		[KEYBOARD_SCANCODE_K] = 'k',
 		[KEYBOARD_SCANCODE_L] = 'l',
+		[KEYBOARD_SCANCODE_SEMICOLON] = ';',
+		[KEYBOARD_SCANCODE_APOSTROPHE] = '\'',
+		[KEYBOARD_SCANCODE_BACKSLASH] = '\\',
 		[KEYBOARD_SCANCODE_Z] = 'z',
 		[KEYBOARD_SCANCODE_X] = 'x',
 		[KEYBOARD_SCANCODE_C] = 'c',
@@ -91,9 +102,43 @@ static char
 		[KEYBOARD_SCANCODE_B] = 'b',
 		[KEYBOARD_SCANCODE_N] = 'n',
 		[KEYBOARD_SCANCODE_M] = 'm',
+		[KEYBOARD_SCANCODE_COMMA] = ',',
+		[KEYBOARD_SCANCODE_DOT] = '.',
+		[KEYBOARD_SCANCODE_SLASH] = '/',
 		[KEYBOARD_SCANCODE_SPACE] = ' '
 	};
+
+	static const char shift_map[KEYBOARD_SCANCODE_MAP_SIZE] = {
+		[KEYBOARD_SCANCODE_1] = '!',
+		[KEYBOARD_SCANCODE_2] = '@',
+		[KEYBOARD_SCANCODE_3] = '#',
+		[KEYBOARD_SCANCODE_4] = '$',
+		[KEYBOARD_SCANCODE_5] = '%',
+		[KEYBOARD_SCANCODE_6] = '^',
+		[KEYBOARD_SCANCODE_7] = '&',
+		[KEYBOARD_SCANCODE_8] = '*',
+		[KEYBOARD_SCANCODE_9] = '(',
+		[KEYBOARD_SCANCODE_0] = ')',
+		[KEYBOARD_SCANCODE_MINUS] = '_',
+		[KEYBOARD_SCANCODE_EQUAL] = '+',
+		[KEYBOARD_SCANCODE_LBRACKET] = '{',
+		[KEYBOARD_SCANCODE_RBRACKET] = '}',
+		[KEYBOARD_SCANCODE_SEMICOLON] = ':',
+		[KEYBOARD_SCANCODE_APOSTROPHE] = '"',
+		[KEYBOARD_SCANCODE_COMMA] = '<',
+		[KEYBOARD_SCANCODE_DOT] = '>',
+		[KEYBOARD_SCANCODE_SLASH] = '?',
+		[KEYBOARD_SCANCODE_GRAVE] = '~',
+		[KEYBOARD_SCANCODE_BACKSLASH] = '|'
+	};
 	char c;
+
+	if (g_shift_pressed)
+	{
+		c = shift_map[scancode];
+		if (c != 0)
+			return c;
+	}
 
 	c = normal_map[scancode];
 	if (g_shift_pressed && c >= 'a' && c <= 'z')
@@ -147,6 +192,35 @@ static int
 	}
 }
 
+static t_keyboard_key
+	function_key_from_scancode(uint8_t scancode)
+{
+	static const uint8_t function_key_scancodes[12] = {
+		KEYBOARD_SCANCODE_F1,
+		KEYBOARD_SCANCODE_F2,
+		KEYBOARD_SCANCODE_F3,
+		KEYBOARD_SCANCODE_F4,
+		KEYBOARD_SCANCODE_F5,
+		KEYBOARD_SCANCODE_F6,
+		KEYBOARD_SCANCODE_F7,
+		KEYBOARD_SCANCODE_F8,
+		KEYBOARD_SCANCODE_F9,
+		KEYBOARD_SCANCODE_F10,
+		KEYBOARD_SCANCODE_F11,
+		KEYBOARD_SCANCODE_F12
+	};
+	unsigned index;
+
+	index = 0;
+	while (index < VIRTUAL_DESKTOP_COUNT)
+	{
+		if (scancode == function_key_scancodes[index])
+			return (t_keyboard_key) (KEYBOARD_KEY_F1 + index);
+		index++;
+	}
+	return 0;
+}
+
 void
 	keyboard_poll(void)
 {
@@ -184,27 +258,38 @@ void
 	}
 	if (scancode & KEYBOARD_SCANCODE_RELEASE)
 		return;
+	key = function_key_from_scancode(scancode);
+	if (key != 0)
+	{
+		queue_push(key);
+		return;
+	}
 	c = scancode_to_char(scancode);
 	if (c != 0)
 		queue_push(c);
 }
 
 void
-	keyboard_write_loop(unsigned x, unsigned y)
+	keyboard_write_loop(void)
 {
 	t_keyboard_key key;
+	int needs_cursor;
 
 	keyboard_init();
-	keyboard_screen_init(x, y);
 	keyboard_screen_draw_cursor();
 	while (1)
 	{
 		keyboard_poll();
 		while (keyboard_pop(&key))
 		{
+			needs_cursor = 1;
 			keyboard_screen_erase_cursor();
 			keyboard_screen_handle_key(key);
-			keyboard_screen_draw_cursor();
+			if (key >= KEYBOARD_KEY_F1
+				&& key < KEYBOARD_KEY_F1 + VIRTUAL_DESKTOP_COUNT)
+				needs_cursor = 0;
+			if (needs_cursor)
+				keyboard_screen_draw_cursor();
 		}
 		__asm__ volatile ("pause");
 	}

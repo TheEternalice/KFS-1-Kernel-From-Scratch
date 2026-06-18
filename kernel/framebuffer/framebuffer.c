@@ -2,37 +2,6 @@
 
 t_framebuffer g_framebuffer;
 
-void
-	framebuffer_init(struct multiboot_tag_framebuffer *tagfb)
-{
-	g_framebuffer.tag = tagfb;
-	g_framebuffer.cursor_x = 0;
-	g_framebuffer.cursor_y = 0;
-}
-
-unsigned
-	framebuffer_width(void)
-{
-	if (!g_framebuffer.tag)
-		return 0;
-	return g_framebuffer.tag->common.framebuffer_width;
-}
-
-unsigned
-	framebuffer_height(void)
-{
-	if (!g_framebuffer.tag)
-		return 0;
-	return g_framebuffer.tag->common.framebuffer_height;
-}
-
-void
-	framebuffer_set_cursor(unsigned x, unsigned y)
-{
-	g_framebuffer.cursor_x = x;
-	g_framebuffer.cursor_y = y;
-}
-
 static uint32_t
 	convert_color_for_framebuffer(uint32_t rgb)
 {
@@ -82,8 +51,7 @@ static uint32_t
 }
 
 static void
-	framebuffer_put_pixel(unsigned x, unsigned y,
-							uint32_t color)
+	framebuffer_put_pixel(unsigned x, unsigned y, uint32_t color)
 {
 	void *fb;
 	unsigned pitch;
@@ -93,8 +61,30 @@ static void
 		return;
 	fb = (void *) (uint32_t) g_framebuffer.tag->common.framebuffer_addr;
 	pitch = g_framebuffer.tag->common.framebuffer_pitch;
-	pixel = fb + pitch * y + 4 * x;
+	pixel = fb + pitch * y + FRAMEBUFFER_BYTES_PER_PIXEL * x;
 	*pixel = color;
+}
+
+void
+	framebuffer_init(struct multiboot_tag_framebuffer *tagfb)
+{
+	g_framebuffer.tag = tagfb;
+}
+
+unsigned
+	framebuffer_width(void)
+{
+	if (!g_framebuffer.tag)
+		return 0;
+	return g_framebuffer.tag->common.framebuffer_width;
+}
+
+unsigned
+	framebuffer_height(void)
+{
+	if (!g_framebuffer.tag)
+		return 0;
+	return g_framebuffer.tag->common.framebuffer_height;
 }
 
 void
@@ -106,14 +96,43 @@ void
 	unsigned current_x;
 	unsigned current_y;
 
+	if (!g_framebuffer.tag || width == 0 || height == 0)
+		return;
+	color = convert_color_for_framebuffer(rgb);
+	current_y = y;
+	while (current_y < y + height && current_y < framebuffer_height())
+	{
+		current_x = x;
+		while (current_x < x + width && current_x < framebuffer_width())
+		{
+			framebuffer_put_pixel(current_x, current_y, color);
+			current_x++;
+		}
+		current_y++;
+	}
+}
+
+void
+	framebuffer_clear(uint32_t rgb)
+{
+	uint32_t color;
+	unsigned x;
+	unsigned y;
+
 	if (!g_framebuffer.tag)
 		return;
 	color = convert_color_for_framebuffer(rgb);
-	for (current_y = y; current_y < y + height
-		&& current_y < framebuffer_height(); current_y++)
-		for (current_x = x; current_x < x + width
-			&& current_x < framebuffer_width(); current_x++)
-			framebuffer_put_pixel(current_x, current_y, color);
+	y = 0;
+	while (y < framebuffer_height())
+	{
+		x = 0;
+		while (x < framebuffer_width())
+		{
+			framebuffer_put_pixel(x, y, color);
+			x++;
+		}
+		y++;
+	}
 }
 
 void
@@ -127,86 +146,85 @@ void
 	unsigned current_y;
 	unsigned x;
 
-	if (!g_framebuffer.tag)
-		return;
-	if (offset == 0 || offset >= height)
+	if (!g_framebuffer.tag || offset == 0 || offset >= height)
 		return;
 	fb = (uint8_t *) (uint32_t) g_framebuffer.tag->common.framebuffer_addr;
 	pitch = g_framebuffer.tag->common.framebuffer_pitch;
-	for (current_y = y; current_y < y + height - offset; current_y++)
+	current_y = y;
+	while (current_y < y + height - offset)
 	{
 		dst = (uint32_t *) (fb + pitch * current_y);
 		src = (uint32_t *) (fb + pitch * (current_y + offset));
-		for (x = 0; x < framebuffer_width(); x++)
+		x = 0;
+		while (x < framebuffer_width())
+		{
 			dst[x] = src[x];
+			x++;
+		}
+		current_y++;
 	}
-	framebuffer_fill_rect(0, y + height - offset,
-		framebuffer_width(), offset, rgb);
+	framebuffer_fill_rect(0, y + height - offset, framebuffer_width(), offset,
+			rgb);
 }
 
 void
-	framebuffer_clear(uint32_t rgb)
-{
-	uint32_t color;
-	unsigned x;
-	unsigned y;
-
-	if (!g_framebuffer.tag)
-		return;
-	color = convert_color_for_framebuffer(rgb);
-	for (y = 0; y < framebuffer_height(); y++)
-		for (x = 0; x < framebuffer_width(); x++)
-			framebuffer_put_pixel(x, y, color);
-}
-
-void
-	framebuffer_draw_char(unsigned char c)
+	framebuffer_draw_glyph(unsigned x, unsigned y,
+							unsigned char c, uint32_t fg, uint32_t bg)
 {
 	const uint8_t *glyph;
-	uint32_t color;
+	uint32_t foreground_color;
+	uint32_t background_color;
 	unsigned row;
 	unsigned col;
 
-	if (c == '\n')
-	{
-		g_framebuffer.cursor_x = 0;
-		g_framebuffer.cursor_y += GLYPH_HEIGHT;
-		return;
-	}
 	if (!g_framebuffer.tag)
 		return;
 	if (c >= 128 || !g_glyph_present[c])
 		c = ' ';
 	glyph = g_glyphs[c];
-	color = convert_color_for_framebuffer(FRAMEBUFFER_DEFAULT_COLOR);
-	for (row = 0; row < GLYPH_HEIGHT; row++)
-		for (col = 0; col < GLYPH_WIDTH; col++)
-			if (glyph[row] & (1 << (GLYPH_WIDTH - 1 - col)))
-				framebuffer_put_pixel(g_framebuffer.cursor_x + col,
-						g_framebuffer.cursor_y + row, color);
-	g_framebuffer.cursor_x += GLYPH_WIDTH;
-	if (g_framebuffer.cursor_x + GLYPH_WIDTH > framebuffer_width())
+	foreground_color = convert_color_for_framebuffer(fg);
+	background_color = convert_color_for_framebuffer(bg);
+	row = 0;
+	while (row < GLYPH_HEIGHT)
 	{
-		g_framebuffer.cursor_x = 0;
-		g_framebuffer.cursor_y += GLYPH_HEIGHT;
+		col = 0;
+		while (col < GLYPH_WIDTH)
+		{
+			if (glyph[row] & (1 << (GLYPH_WIDTH - 1 - col)))
+				framebuffer_put_pixel(x + col, y + row, foreground_color);
+			else
+				framebuffer_put_pixel(x + col, y + row, background_color);
+			col++;
+		}
+		row++;
 	}
 }
 
 void
-	framebuffer_draw_string(const char *str)
+	framebuffer_draw_glyph_overlay(unsigned x, unsigned y,
+									unsigned char c, uint32_t fg)
 {
-	unsigned start_x;
+	const uint8_t *glyph;
+	uint32_t foreground_color;
+	unsigned row;
+	unsigned col;
 
-	start_x = g_framebuffer.cursor_x;
-	while (*str)
+	if (!g_framebuffer.tag)
+		return;
+	if (c >= 128 || !g_glyph_present[c])
+		return;
+	glyph = g_glyphs[c];
+	foreground_color = convert_color_for_framebuffer(fg);
+	row = 0;
+	while (row < GLYPH_HEIGHT)
 	{
-		if (*str == '\n')
+		col = 0;
+		while (col < GLYPH_WIDTH)
 		{
-			g_framebuffer.cursor_x = start_x;
-			g_framebuffer.cursor_y += GLYPH_HEIGHT;
+			if (glyph[row] & (1 << (GLYPH_WIDTH - 1 - col)))
+				framebuffer_put_pixel(x + col, y + row, foreground_color);
+			col++;
 		}
-		else
-			framebuffer_draw_char(*str);
-		str++;
+		row++;
 	}
 }

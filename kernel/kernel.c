@@ -1,4 +1,5 @@
 #include "./framebuffer/framebuffer.h"
+#include "./framebuffer/screen.h"
 #include "./keyboard/keyboard.h"
 #include "./multiboot/multiboot_info.h"
 
@@ -10,7 +11,8 @@ void kernel_main(uint32_t magic, uint32_t multiboot_info_addr)
 		return;
 
 	framebuffer_clear(GRAPHIC_COLOR_BLACK);
-	framebuffer_set_cursor(0, 0);
+	keyboard_screen_init();
 	multiboot_info_print(multiboot_info_addr);
-	keyboard_write_loop(0, g_framebuffer.cursor_y + FRAMEBUFFER_CHAR_HEIGHT);
+	printk("42\n");
+	keyboard_write_loop();
 }

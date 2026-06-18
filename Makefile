@@ -3,14 +3,12 @@ C_SRCS			=	kernel/kernel.c kernel/framebuffer/framebuffer.c\
 					kernel/multiboot/multiboot_info.c kernel/libc/libc.c
 C_OBJS			=	$(C_SRCS:%.c=$(OBJ_DIR)/%.o)
 
-ASM_SRCS		=	boot/boot.s
-ASM_OBJS		=	$(ASM_SRCS:%.s=$(OBJ_DIR)/%.o)
+ASM_SRCS		=	boot/boot.S
+ASM_OBJS		=	$(ASM_SRCS:%.S=$(OBJ_DIR)/%.o)
 
 LINKER_SCRIPT	=	linker/linker.ld
 
 CC				=	gcc
-
-AS				=	as
 
 LD				=	ld
 
@@ -20,25 +18,28 @@ ISO				=	$(TARGET_DIR)/kfs.iso
 ISODIR			=	$(TARGET_DIR)/isodir
 KERNEL			=	$(ISODIR)/boot/kernel.elf
 
-CFLAGS			=	-m32 -ffreestanding -Wall -Wextra -Werror -fno-builtin -fno-exceptions -fno-stack-protector -nostdlib -nodefaultlibs
+CFLAGS			=	-m32 -ffreestanding -Wall -Wextra -Werror -fno-builtin \
+					-fno-exceptions -fno-stack-protector -nostdlib -nodefaultlibs \
+					-Iconfig -MMD -MP
 
-ASFLAGS			=	--32
-
-LDFLAGS			=	-m elf_i386 -T $(LINKER_SCRIPT) -nostdlib -nodefaultlibs
+LDFLAGS			=	-m elf_i386 -T $(LINKER_SCRIPT)
 
 RM				=	rm -f
 
 NAME			=	kfs1
 
 OBJS			=	$(ASM_OBJS) $(C_OBJS)
+DEPS			=	$(C_OBJS:.o=.d)
 
 all: $(KERNEL)
 
-$(OBJ_DIR)/%.o: %.s
-	@mkdir -p $(dir $@)
-	$(AS) $(ASFLAGS) $< -o $@
+-include $(DEPS)
 
 $(OBJ_DIR)/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJ_DIR)/%.o: %.S
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -61,4 +62,16 @@ fclean: clean
 
 re: fclean all
 
-.PHONY: all iso clean fclean re
+docker-build:
+	docker compose build
+
+docker:
+	docker compose run --rm kfs make
+
+docker-iso:
+	docker compose run --rm kfs make iso
+
+docker-clean:
+	docker compose run --rm kfs make fclean
+
+.PHONY: all iso clean fclean re docker-build docker docker-iso docker-clean

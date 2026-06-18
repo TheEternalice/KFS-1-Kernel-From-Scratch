@@ -1,0 +1,6 @@
+services:
+  kfs:
+    build: .
+    working_dir: /kfs
+    volumes:
+      - .:/kfs
