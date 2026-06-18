@@ -1,6 +1,4 @@
 #include "libc.h"
-#include "../graphic/graphic.h"
-#include <stdint.h>
 
 void	itoa_base(char *buf, int base, int d)
 {
@@ -49,7 +47,7 @@ void	printk(const char *format, ...)
 	while ((c = *format++) != 0)
 	{
 		if (c != '%')
-			putchar(c);
+			framebuffer_draw_char(c);
 		else
 		{
 			char *p, *p2;
@@ -86,13 +84,13 @@ void	printk(const char *format, ...)
 					string:
 					for (p2 = p; *p2; p2++);
 					for (; p2 < p + pad; p2++)
-						putchar(pad0 ? '0' : ' ');
+						framebuffer_draw_char(pad0 ? '0' : ' ');
 					while (*p)
-						putchar(*p++);
+						framebuffer_draw_char(*p++);
 					break;
 
 				default:
-					putchar(*((int *) arg++));
+					framebuffer_draw_char(*((int *) arg++));
 					break;
 			}
 		}
